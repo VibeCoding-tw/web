@@ -352,9 +352,9 @@
     class VibeAIService {
       constructor(apiKey) {
         this.genAI = new GoogleGenerativeAI(apiKey);
-        // Using gemini-2.0-flash as the new stable baseline for 2026
+        // Using gemini-2.5-flash as requested
         this.model = this.genAI.getGenerativeModel({
-          model: "gemini-2.0-flash",
+          model: "gemini-2.5-flash",
           generationConfig: { responseMimeType: "application/json" }
         });
       }
@@ -500,7 +500,11 @@
           }
         } catch (e) {
           console.error(e);
-          alert('AI Error: ' + e.message);
+          if (e.message.includes('429') || e.message.toLowerCase().includes('quota')) {
+            alert('AI 錯誤 (429): 您的 API 配額已達上限或超出了預算設定。請前往 Google AI Studio (https://aistudio.google.com/app/billing) 檢查您的帳單與額度限制。');
+          } else {
+            alert('AI 發生錯誤: ' + e.message);
+          }
         } finally {
           loader.classList.add('hidden');
           btnText.textContent = 'Generate with AI';
