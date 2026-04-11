@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+  <title>Joystick Pro - Live Vibe System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700;900&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      /* Vibe Variables - 這些將由 JS 動態控制 */
+      --vibe-primary: #6366f1;
+      --vibe-secondary: #ec4899;
+      --vibe-bg-1: #0f172a;
+      --vibe-bg-2: #1e1b4b;
+      --vibe-accent: #22d3ee;
+      --vibe-glass-blur: 15px;
+      --vibe-glass-opacity: 0.7;
+      --vibe-glow-intensity: 0.8;
+      --vibe-joystick-size: 300px;
+      --vibe-thumb-size: 80px;
+    }
+
+    * { box-sizing: border-box; }
+    
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, var(--vibe-bg-1), var(--vibe-bg-2));
+      color: #f8fafc;
+      font-family: 'Outfit', sans-serif;
+      overflow: hidden; /* 防止滾動 */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Mesh Gradient Decor */
+    .mesh-bg {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      z-index: -1;
+      overflow: hidden;
+    }
+    .blob {
+      position: absolute;
+      width: 50vw;
+      height: 50vw;
+      background: var(--vibe-primary);
+      filter: blur(80px);
+      border-radius: 50%;
+      opacity: 0.15;
+      animation: drift 20s infinite alternate;
+    }
+    .blob-2 {
+      right: -10%; top: -10%;
+      background: var(--vibe-secondary);
+      animation-delay: -5s;
+    }
+    @keyframes drift {
+      from { transform: translate(0, 0) scale(1); }
+      to { transform: translate(10%, 10%) scale(1.1); }
+    }
+
+    /* Glass Container */
+    .glass-panel {
+      background: rgba(31, 41, 55, var(--vibe-glass-opacity));
+      backdrop-filter: blur(var(--vibe-glass-blur));
+      -webkit-backdrop-filter: blur(var(--vibe-glass-blur));
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 2.5rem;
+      padding: 2.5rem;
+      width: min(95vw, 450px);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      position: relative;
+    }
+
+    /* Joystick Style */
+    #joystick {
+      position: relative;
+      width: var(--vibe-joystick-size);
+      height: var(--vibe-joystick-size);
+      margin: 2rem auto;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.3);
+      box-shadow: inset 0 4px 10px rgba(0,0,0,0.5), 0 0 20px rgba(0,0,0,0.2);
+      border: 2px solid rgba(255, 255, 255, 0.05);
+      touch-action: none;
+    }
+
+    #joystick-thumb {
+      position: absolute;
+      width: var(--vibe-thumb-size);
+      height: var(--vibe-thumb-size);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--vibe-primary);
+      border-radius: 50%;
+      cursor: grab;
+      box-shadow: 0 0 15px rgba(0,0,0,0.3), 
+                  0 0 calc(20px * var(--vibe-glow-intensity)) var(--vibe-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 900;
+      color: white;
+      transition: box-shadow 0.2s, transform 0.1s;
+      z-index: 10;
+    }
+    #joystick-thumb.active {
+      cursor: grabbing;
+      box-shadow: 0 0 25px rgba(0,0,0,0.4), 
+                  0 0 calc(40px * var(--vibe-glow-intensity)) var(--vibe-accent);
+      background: var(--vibe-accent);
+    }
+
+    /* Customizer Side Panel */
+    #customizer {
+      position: fixed;
+      right: -320px;
+      top: 0;
+      width: 320px;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(20px);
+      border-left: 1px solid rgba(255,255,255,0.1);
+      transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 2000;
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+    #customizer.open { right: 0; }
+    
+    .toggle-customizer {
+      position: fixed;
+      right: 20px;
+      top: 20px;
+      width: 48px;
+      height: 48px;
+      background: var(--vibe-primary);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 2001;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .toggle-customizer:hover { transform: rotate(45deg) scale(1.1); }
+    .toggle-customizer.active { transform: rotate(90deg); background: rgba(15, 23, 42, 0.9); }
+
+    .input-group { margin-bottom: 1.25rem; }
+    .input-group label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem; }
+    input[type="range"] { width: 100%; accent-color: var(--vibe-primary); }
+    input[type="color"] { background: none; border: none; width: 40px; height: 40px; cursor: pointer; }
+
+    /* Visualizer Canvas */
+    #viz-container {
+      width: 100%;
+      height: 60px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+      margin-top: 1.5rem;
+      overflow: hidden;
+    }
+
+    button.btn-primary {
+      background: var(--vibe-primary);
+      padding: 0.75rem 1.5rem;
+      border-radius: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      transition: all 0.2s;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    button.btn-primary:active { transform: scale(0.95); opacity: 0.9; }
+
+  </style>
+</head>
+<body>
+
+  <div class="mesh-bg">
+    <div class="blob"></div>
+    <div class="blob blob-2"></div>
+  </div>
+
+  <!-- Side Customizer -->
+  <div id="toggleBtn" class="toggle-customizer">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2a2 2 0 0 1-2 2a2 2 0 0 0-2 2a2 2 0 0 1-2 2a2 2 0 0 0-2 2a2 2 0 0 1-2 2a2 2 0 0 0-2 2a2 2 0 0 1-2 2a2 2 0 0 0-2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2a2 2 0 0 1 2 2a2 2 0 0 0 2 2a2 2 0 0 1 2-2a2 2 0 0 0 2-2a2 2 0 0 1 2-2a2 2 0 0 0 2-2a2 2 0 0 1 2-2a2 2 0 0 0 2-2a2 2 0 0 1-2-2a2 2 0 0 0-2-2a2 2 0 0 1-2-2a2 2 0 0 0-2-2a2 2 0 0 1-2-2a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg>
+  </div>
+  <aside id="customizer">
+    <h2 class="text-xl font-black mb-6 flex items-center gap-2">
+      Vibe Customizer
+    </h2>
+    
+    <div class="space-y-6">
+      <div class="input-group">
+        <label>主題色 (Primary)</label>
+        <div class="flex items-center gap-4">
+           <input type="color" data-key="primary" value="#6366f1">
+           <span class="text-xs font-mono opacity-50">#6366f1</span>
+        </div>
+      </div>
+      
+      <div class="input-group">
+        <label>光暈強度 (Glow)</label>
+        <input type="range" data-key="glowIntensity" min="0" max="2" step="0.1" value="0.8">
+      </div>
+
+      <div class="input-group">
+        <label>玻璃模糊度 (Glass Blur)</label>
+        <input type="range" data-key="glassBlur" min="0" max="40" step="1" value="15">
+      </div>
+
+      <div class="input-group">
+        <label>玻璃不透明度 (Opacity)</label>
+        <input type="range" data-key="glassOpacity" min="0" max="1" step="0.01" value="0.7">
+      </div>
+
+      <hr class="opacity-10">
+
+      <div class="input-group">
+        <label>死區範圍 (Deadzone)</label>
+        <input type="range" data-key="deadzone" min="0" max="50" step="1" value="15">
+      </div>
+
+      <div class="input-group">
+        <label>操控曲線 (Expo)</label>
+        <input type="range" data-key="expo" min="1" max="3" step="0.1" value="1.5">
+        <div class="text-[10px] opacity-50 flex justify-between">
+          <span>線性</span><span>極致靈敏</span>
+        </div>
+      </div>
+
+      <button id="resetVibe" class="w-full py-2 bg-red-500/20 text-red-500 border border-red-500/50 rounded-lg text-sm font-bold">
+        重置預設值
+      </button>
+
+      <div class="mt-8">
+        <label class="text-[10px] uppercase tracking-widest opacity-30 font-bold">Vibe JSON</label>
+        <textarea id="vibeJson" class="w-full h-24 bg-black/40 border border-white/10 rounded-lg p-2 text-[10px] font-mono mt-1" readonly></textarea>
+      </div>
+    </div>
+  </aside>
+
+  <main class="glass-panel text-center">
+    <header class="flex flex-col items-center gap-2 mb-8">
+      <h1 class="text-4xl font-black tracking-tighter italic uppercase text-indigo-400">Joystick Pro</h1>
+      <p class="text-xs font-bold text-white/40 tracking-[0.3em] uppercase">Vibe-coding Edition</p>
+    </header>
+
+    <!-- BLE Controls -->
+    <div class="flex items-center justify-between gap-4 mb-4">
+       <button id="btnConnect" class="btn-primary flex-grow">連線裝置</button>
+       <div id="statusBadge" class="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-2">
+         <span class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+         <span id="statusText">等待連線</span>
+       </div>
+    </div>
+
+    <!-- Joystick Area -->
+    <div id="joystick">
+       <div id="joystick-thumb">READY</div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 gap-4">
+      <div class="bg-white/5 p-4 rounded-2xl border border-white/5">
+        <div class="text-[10px] opacity-50 uppercase font-black">Throttle</div>
+        <div id="valT" class="text-2xl font-black font-mono">0</div>
+      </div>
+      <div class="bg-white/5 p-4 rounded-2xl border border-white/5">
+        <div class="text-[10px] opacity-50 uppercase font-black">Steer</div>
+        <div id="valS" class="text-2xl font-black font-mono">0</div>
+      </div>
+    </div>
+
+    <div id="viz-container">
+      <canvas id="vizCanvas"></canvas>
+    </div>
+
+    <footer class="mt-8 text-[10px] opacity-20 uppercase font-bold tracking-widest">
+      Engineered for Deepmind Vibe Coding
+    </footer>
+  </main>
+
+<script>
+/**
+ * ==========================================
+ * [Driver] VibeBLEDriver
+ * 封裝所有藍牙與通訊邏輯
+ * ==========================================
+ */
+class VibeBLEDriver {
+  constructor(config) {
+    this.SERVICE_UUID = config.serviceUuid || '4fafc201-1fb5-459e-8fcc-c0ffee00dead';
+    this.CHARACTERISTIC_UUID = config.characteristicUuid || '4fafc202-1fb5-459e-8fcc-c0ffee01feed';
+    this.SEND_INTERVAL = config.interval || 60;
+    
+    this.device = null;
+    this.characteristic = null;
+    this.isConnected = false;
+    this.sendingInterval = null;
+    this.lastPayload = { t: 0, s: 0 };
+    
+    // Callbacks
+    this.onStatusChange = () => {};
+    this.onDataSent = () => {};
+  }
+
+  async connect() {
+    try {
+      this.onStatusChange('正在尋找裝置...', 'connecting');
+      this.device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'esp32' }],
+        optionalServices: [this.SERVICE_UUID]
+      });
+
+      this.device.addEventListener('gattserverdisconnected', () => this.handleDisconnect());
+      
+      this.onStatusChange('正在連線 GATT...', 'connecting');
+      const server = await this.device.gatt.connect();
+      const service = await server.getPrimaryService(this.SERVICE_UUID);
+      this.characteristic = await service.getCharacteristic(this.CHARACTERISTIC_UUID);
+
+      this.isConnected = true;
+      this.onStatusChange(`成功連線: ${this.device.name}`, 'connected');
+      this.startHeartbeat();
+    } catch (err) {
+      console.error(err);
+      this.onStatusChange(`連線失敗: ${err.message}`, 'error');
+      this.isConnected = false;
+    }
+  }
+
+  handleDisconnect() {
+    this.isConnected = false;
+    this.stopHeartbeat();
+    this.onStatusChange('裝置已中斷連線', 'disconnected');
+  }
+
+  startHeartbeat() {
+    if (this.sendingInterval) clearInterval(this.sendingInterval);
+    this.sendingInterval = setInterval(() => this.broadcast(), this.SEND_INTERVAL);
+  }
+
+  stopHeartbeat() {
+    if (this.sendingInterval) clearInterval(this.sendingInterval);
+    this.sendingInterval = null;
+  }
+
+  setPower(t, s) {
+    this.lastPayload = { t, s };
+  }
+
+  async broadcast() {
+    if (!this.isConnected || !this.characteristic) return;
+    
+    const payload = `${this.lastPayload.t},${this.lastPayload.s}`;
+    try {
+      await this.characteristic.writeValue(new TextEncoder().encode(payload));
+      this.onDataSent(this.lastPayload);
+    } catch (err) {
+      console.warn('Write failed', err);
+    }
+  }
+}
+
+/**
+ * ==========================================
+ * [UI] VibeUIManager
+ * 負責視覺樣式、動畫與自定義面板
+ * ==========================================
+ */
+class VibeUIManager {
+  constructor(defaultConfig) {
+    this.config = this.loadConfig() || defaultConfig;
+    this.initInputs();
+    this.applyVibe();
+  }
+
+  loadConfig() {
+    const saved = localStorage.getItem('vibe_pro_config');
+    return saved ? JSON.parse(saved) : null;
+  }
+
+  saveConfig() {
+    localStorage.setItem('vibe_pro_config', JSON.stringify(this.config));
+    document.getElementById('vibeJson').value = JSON.stringify(this.config, null, 2);
+  }
+
+  initInputs() {
+    const inputs = document.querySelectorAll('#customizer input');
+    inputs.forEach(input => {
+      const key = input.dataset.key;
+      input.value = this.config[key];
+      
+      input.addEventListener('input', (e) => {
+        this.config[key] = e.target.type === 'range' ? parseFloat(e.target.value) : e.target.value;
+        this.applyVibe();
+        this.saveConfig();
+      });
+    });
+
+    document.getElementById('resetVibe').onclick = () => {
+      localStorage.removeItem('vibe_pro_config');
+      location.reload();
+    };
+  }
+
+  applyVibe() {
+    const root = document.documentElement;
+    root.style.setProperty('--vibe-primary', this.config.primary);
+    root.style.setProperty('--vibe-glow-intensity', this.config.glowIntensity);
+    root.style.setProperty('--vibe-glass-blur', `${this.config.glassBlur}px`);
+    root.style.setProperty('--vibe-glass-opacity', this.config.glassOpacity);
+    
+    // 也能動態調整 blob 顏色
+    document.querySelector('.blob').style.background = this.config.primary;
+  }
+
+  updateStatus(text, state) {
+    const el = document.getElementById('statusText');
+    const badge = document.getElementById('statusBadge');
+    const dot = badge.querySelector('span');
+    
+    el.textContent = text;
+    
+    // 動態標籤顏色
+    const colors = {
+      connected: 'bg-green-500',
+      disconnected: 'bg-orange-500',
+      error: 'bg-red-500',
+      connecting: 'bg-indigo-500'
+    };
+    
+    dot.className = `w-2 h-2 rounded-full ${colors[state] || 'bg-white'} ${state === 'connecting' ? 'animate-ping' : 'animate-pulse'}`;
+    
+    const btn = document.getElementById('btnConnect');
+    btn.textContent = state === 'connected' ? '斷開連線' : '連線裝置';
+  }
+}
+
+/**
+ * ==========================================
+ * [Main] App Logic
+ * 實作搖桿與數據驅動
+ * ==========================================
+ */
+const DEFAULT_VIBE = {
+  primary: '#6366f1',
+  glowIntensity: 0.8,
+  glassBlur: 15,
+  glassOpacity: 0.7,
+  deadzone: 15,
+  expo: 1.5
+};
+
+const ble = new VibeBLEDriver({ interval: 60 });
+const ui = new VibeUIManager(DEFAULT_VIBE);
+
+// --- 搖桿觸控處理 ---
+const joystick = document.getElementById('joystick');
+const thumb = document.getElementById('joystick-thumb');
+let isDragging = false;
+let rect, centerX, centerY, radius;
+
+function updateJoystickSize() {
+  rect = joystick.getBoundingClientRect();
+  centerX = rect.left + rect.width / 2;
+  centerY = rect.top + rect.height / 2;
+  radius = rect.width / 2;
+}
+
+function handlePointerDown(e) {
+  if (!ble.isConnected) return;
+  isDragging = true;
+  thumb.classList.add('active');
+  updateJoystickSize();
+  handlePointerMove(e);
+}
+
+function applyExpo(value, expo) {
+  const sign = value < 0 ? -1 : 1;
+  const absVal = Math.abs(value);
+  // 將 0~255 映射到 0~1，套用指數後再映回 0~255
+  return Math.round(sign * Math.pow(absVal / 255, expo) * 255);
+}
+
+function handlePointerMove(e) {
+  if (!isDragging) return;
+  
+  let dx = e.clientX - centerX;
+  let dy = e.clientY - centerY;
+  
+  const distance = Math.sqrt(dx*dx + dy*dy);
+  if (distance > radius) {
+    const angle = Math.atan2(dy, dx);
+    dx = radius * Math.cos(angle);
+    dy = radius * Math.sin(angle);
+  }
+
+  // UI 更新 Thumb 位置
+  thumb.style.left = `${radius + dx}px`;
+  thumb.style.top = `${radius + dy}px`;
+
+  // 計算數值 (T, S)
+  let rawS = Math.round((dx / radius) * 255);
+  let rawT = Math.round((-dy / radius) * 255);
+
+  // 套用 Deadzone
+  if (Math.abs(rawS) < ui.config.deadzone) rawS = 0;
+  if (Math.abs(rawT) < ui.config.deadzone) rawT = 0;
+
+  // 套用 Expo
+  const s = applyExpo(rawS, ui.config.expo);
+  const t = applyExpo(rawT, ui.config.expo);
+
+  document.getElementById('valT').textContent = t;
+  document.getElementById('valS').textContent = s;
+  thumb.textContent = `${t},${s}`;
+
+  ble.setPower(t, s);
+}
+
+function handlePointerUp() {
+  isDragging = false;
+  thumb.classList.remove('active');
+  thumb.style.left = '50%';
+  thumb.style.top = '50%';
+  thumb.textContent = 'READY';
+  document.getElementById('valT').textContent = 0;
+  document.getElementById('valS').textContent = 0;
+  ble.setPower(0, 0);
+}
+
+// 監聽器
+joystick.addEventListener('pointerdown', handlePointerDown);
+window.addEventListener('pointermove', handlePointerMove);
+window.addEventListener('pointerup', handlePointerUp);
+window.addEventListener('resize', updateJoystickSize);
+
+// 通訊狀態與 UI 掛鉤
+ble.onStatusChange = (text, state) => ui.updateStatus(text, state);
+document.getElementById('btnConnect').onclick = () => ble.connect();
+
+// 自定義面板開關
+document.getElementById('toggleBtn').onclick = () => {
+  document.getElementById('customizer').classList.toggle('open');
+};
+
+// --- Canvas 視覺化 ---
+const canvas = document.getElementById('vizCanvas');
+const ctx = canvas.getContext('2d');
+let points = [];
+
+function drawViz() {
+  canvas.width = canvas.parentElement.clientWidth;
+  canvas.height = canvas.parentElement.clientHeight;
+  
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (points.length > 100) points.shift();
+  points.push({ t: ble.lastPayload.t, s: ble.lastPayload.s });
+
+  const drawLine = (prop, color) => {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    points.forEach((p, i) => {
+      const x = (i / 100) * canvas.width;
+      const y = (canvas.height / 2) - (p[prop] / 255) * (canvas.height / 2);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  };
+
+  drawLine('t', ui.config.primary);
+  drawLine('s', '#22d3ee');
+  
+  requestAnimationFrame(drawViz);
+}
+drawViz();
+
+</script>
+</body>
+</html>
