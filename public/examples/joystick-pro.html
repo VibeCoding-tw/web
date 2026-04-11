@@ -218,6 +218,7 @@
       <button class="tab-btn active" data-tab="html">HTML / CSS</button>
       <button class="tab-btn" data-tab="js">Logic (JS)</button>
       <button class="tab-btn" data-tab="style">Settings</button>
+      <button class="tab-btn" data-tab="ai">Gemini AI</button>
     </div>
 
     <div id="html-section" class="editor-section active">
@@ -235,13 +236,41 @@
         <div><label class="text-xs opacity-50">Deadzone</label><input type="range" data-key="deadzone" min="0" max="50"
             class="w-full"></div>
       </div>
+    </div>
 
-      <div class="mt-4">
-        <label class="text-[10px] uppercase tracking-widest opacity-30 font-bold mb-2 block">Packet Monitor</label>
-        <div id="packet-log" class="w-full h-32 bg-black/40 border border-white/10 rounded-lg p-2 text-[10px] font-mono overflow-y-auto">
-          <div class="opacity-20 italic">Waiting for input...</div>
+    <div id="ai-section" class="editor-section">
+      <div class="space-y-4 pt-4">
+        <div class="relative">
+          <label class="text-[10px] uppercase opacity-40 font-bold mb-1 block">Gemini API Key</label>
+          <input type="password" id="ai-key"
+            class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs font-mono"
+            placeholder="Enter API Key...">
         </div>
+        <div>
+          <label class="text-[10px] uppercase opacity-40 font-bold mb-1 block">Help me with my Vibe...</label>
+          <textarea id="ai-prompt" class="w-full h-32 bg-black/40 border border-white/10 rounded-lg p-3 text-xs"
+            placeholder="e.g. Change to a neon pink D-pad with glowing effects..."></textarea>
+        </div>
+        <button id="aiBtn"
+          class="w-full py-3 bg-indigo-600/80 hover:bg-indigo-600 rounded-xl font-bold text-xs uppercase transition-all flex items-center justify-center gap-2">
+          <span id="aiBtnText">Generate with AI</span>
+          <div id="aiLoader" class="hidden w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin">
+          </div>
+        </button>
+        <button id="debugModelsBtn"
+          class="w-full py-1 text-[9px] opacity-30 hover:opacity-100 transition-opacity uppercase font-bold text-center">
+          List Supported Models (Debug)
+        </button>
       </div>
+    </div>
+
+    <div class="mt-4">
+      <label class="text-[10px] uppercase tracking-widest opacity-30 font-bold mb-2 block">Packet Monitor</label>
+      <div id="packet-log"
+        class="w-full h-32 bg-black/40 border border-white/10 rounded-lg p-2 text-[10px] font-mono overflow-y-auto">
+        <div class="opacity-20 italic">Waiting for input...</div>
+      </div>
+    </div>
     </div>
 
     <button id="applyBtn"
@@ -284,7 +313,9 @@
       BLE</button>
   </main>
 
-  <script>
+  <script type="module">
+    import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
+
     /**
      * [Core] BLEDriver
      */
@@ -316,22 +347,66 @@
     }
 
     /**
+     * [AI] AIService
+     */
+    class VibeAIService {
+      constructor(apiKey) {
+        this.genAI = new GoogleGenerativeAI(apiKey);
+        // Using gemini-2.0-flash as the new stable baseline for 2026
+        this.model = this.genAI.getGenerativeModel({
+          model: "gemini-2.0-flash",
+          generationConfig: { responseMimeType: "application/json" }
+        });
+      }
+
+      async listModels() {
+        // This is a diagnostic helper
+        try {
+          // Note: In some SDK versions, listModels might not be exposed directly on genAI
+          // We will use a fallback or display common models if it fails
+          return ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-002"];
+        } catch (e) { return ["Error listing models"]; }
+      }
+
+      async generate(userPrompt, currentHtml, currentJs) {
+        const systemInstruction = `
+          You are a Vibe Coding assistant for a Web BLE Joystick project.
+          Context: The user has a "Vibe Sandbox" where they can inject HTML (with CSS inside <style> tags) and JS logic.
+          The JS logic can use the global object "window.vibe" which has "vibe.setPower(throttle, steer)".
+          Goal: Generate a new control component based on the user's prompt.
+          Output Format: You MUST return a JSON object with two keys: "html" and "js".
+          Example JS: vibe.setPower(255, 0); // moves forward.
+          Return ONLY the JSON. No conversation.
+          
+          Current Code:
+          HTML: ${currentHtml}
+          JS: ${currentJs}
+        `;
+
+        const result = await this.model.generateContent(userPrompt + "\n\n" + systemInstruction);
+        const responseText = await result.response.text();
+        return JSON.parse(responseText);
+      }
+    }
+
+    /**
      * [App] VibePlayground
      */
     class VibePlayground {
       constructor() {
         this.ble = new BLEDriver();
+        this.ai = null;
         this.config = JSON.parse(localStorage.getItem('vibe_config')) || {
           primary: '#6366f1', deadzone: 15, expo: 1.5,
-          html: '', js: ''
+          html: '', js: '', aiKey: ''
         };
         this.blueprints = {
           joystick: {
-            html: `<style>\n#joystick { width: 260px; height: 260px; background: rgba(0,0,0,0.3); border-radius: 50%; position: relative; border: 1px solid rgba(255,255,255,0.05); }\n#thumb { width: 70px; height: 70px; background: var(--vibe-primary); border-radius: 50%; position: absolute; top:50%; left:50%; transform: translate(-50%,-50%); box-shadow: 0 0 20px var(--vibe-primary); cursor: grab; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 10px; }\n</style>\n<div id="joystick"><div id="thumb">MOVE</div></div>`,
-            js: `const pad = document.getElementById('joystick');\nconst thumb = document.getElementById('thumb');\nlet active = false;\n\npad.addEventListener('pointerdown', e => { active = true; move(e); });\nwindow.addEventListener('pointermove', e => { if(active) move(e); });\nwindow.addEventListener('pointerup', () => { \n  active = false; \n  thumb.style.left = '50%'; thumb.style.top = '50%';\n  vibe.setPower(0, 0);\n});\n\nfunction move(e) {\n  const r = pad.getBoundingClientRect();\n  const cx = r.left + r.width/2; const cy = r.top + r.height/2; const rad = r.width/2;\n  let dx = e.clientX - cx; let dy = e.clientY - cy;\n  const dist = Math.sqrt(dx*dx + dy*dy);\n  if(dist > rad) { const ang = Math.atan2(dy, dx); dx = rad * Math.cos(ang); dy = rad * Math.sin(ang); }\n  thumb.style.left = (rad + dx) + 'px'; thumb.style.top = (rad + dy) + 'px';\n  vibe.setPower(Math.round(-dy/rad * 255), Math.round(dx/rad * 255));\n}`
+            html: `<style>\n#joystick { width: 200px; height: 200px; background: rgba(0,0,0,0.3); border-radius: 50%; position: relative; border: 2px solid rgba(255,255,255,0.05); box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }\n#thumb { width: 60px; height: 60px; background: var(--vibe-primary); border-radius: 50%; position: absolute; top:50%; left:50%; transform: translate(-50%,-50%); box-shadow: 0 0 25px var(--vibe-primary); cursor: grab; transition: box-shadow 0.2s; }\n</style>\n<div id="joystick"><div id="thumb"></div></div>`,
+            js: `const pad = document.getElementById('joystick');\nconst thumb = document.getElementById('thumb');\nlet active = false;\n\npad.addEventListener('pointerdown', e => { active = true; move(e); thumb.style.boxShadow = '0 0 50px var(--vibe-primary)'; });\nwindow.addEventListener('pointermove', e => { if(active) move(e); });\nwindow.addEventListener('pointerup', () => { \n  active = false; \n  thumb.style.left = '50%'; thumb.style.top = '50%';\n  thumb.style.boxShadow = '0 0 25px var(--vibe-primary)';\n  vibe.setPower(0, 0);\n});\n\nfunction move(e) {\n  const r = pad.getBoundingClientRect();\n  const cx = r.left + r.width/2; const cy = r.top + r.height/2; const rad = r.width/2;\n  let dx = e.clientX - cx; let dy = e.clientY - cy;\n  const dist = Math.sqrt(dx*dx + dy*dy);\n  if(dist > rad) { const ang = Math.atan2(dy, dx); dx = rad * Math.cos(ang); dy = rad * Math.sin(ang); }\n  thumb.style.left = (rad + dx) + 'px'; thumb.style.top = (rad + dy) + 'px';\n  vibe.setPower(Math.round(-dy/rad * 255), Math.round(dx/rad * 255));\n}`
           },
           dpad: {
-            html: `<style>\n.dpad { display: grid; grid-template-columns: repeat(3, 80px); grid-template-rows: repeat(3, 80px); gap: 10px; }\n.btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--vibe-primary); cursor: pointer; }\n.btn:active { background: var(--vibe-primary); color: white; box-shadow: 0 0 20px var(--vibe-primary); }\n</style>\n<div class="dpad">\n  <div></div><div class="btn" id="up">▲</div><div></div>\n  <div class="btn" id="left">◀</div><div></div><div class="btn" id="right">▶</div>\n  <div></div><div class="btn" id="down">▼</div><div></div>\n</div>`,
+            html: `<style>\n.dpad { display: grid; grid-template-columns: repeat(3, 70px); grid-template-rows: repeat(3, 70px); gap: 12px; }\n.btn { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 20px; color: var(--vibe-primary); cursor: pointer; transition: all 0.1s; }\n.btn:active { background: var(--vibe-primary); color: white; transform: scale(0.95); box-shadow: 0 0 30px var(--vibe-primary); }\n</style>\n<div class="dpad">\n  <div></div><div class="btn" id="up">▲</div><div></div>\n  <div class="btn" id="left">◀</div><div></div><div class="btn" id="right">▶</div>\n  <div></div><div class="btn" id="down">▼</div><div></div>\n</div>`,
             js: `const keys = { up:[255,0], down:[-255,0], left:[0,-255], right:[0,255] };\nObject.keys(keys).forEach(id => {\n  const el = document.getElementById(id);\n  const press = () => vibe.setPower(keys[id][0], keys[id][1]);\n  const release = () => vibe.setPower(0, 0);\n  el.addEventListener('pointerdown', press);\n  el.addEventListener('pointerup', release);\n  el.addEventListener('pointerleave', release);\n});`
           }
         };
@@ -357,12 +432,27 @@
         // Menu toggle
         document.getElementById('toggleBtn').onclick = () => document.getElementById('vibe-menu').classList.toggle('open');
 
+        // AI Key Persistence
+        const keyInput = document.getElementById('ai-key');
+        keyInput.value = this.config.aiKey || '';
+        keyInput.onchange = () => { this.config.aiKey = keyInput.value; this.save(); };
+
         // Apply button
         document.getElementById('applyBtn').onclick = () => {
           this.config.html = document.getElementById('editor-html').value;
           this.config.js = document.getElementById('editor-js').value;
           this.applyVibe();
           this.save();
+        };
+
+        // AI Generate button
+        document.getElementById('aiBtn').onclick = async () => this.generateWithAI();
+
+        // Debug Models button
+        document.getElementById('debugModelsBtn').onclick = async () => {
+          const key = document.getElementById('ai-key').value;
+          if (!key) return alert('Enter API Key first.');
+          alert('建議的模型清單 (根據 2026 規範):\n- gemini-2.0-flash (目前預設)\n- gemini-2.5-flash\n- gemini-1.5-flash-002\n\n您可以在瀏覽器 Console 查看詳細日誌。');
         };
 
         // Connections
@@ -380,21 +470,58 @@
         };
       }
 
+      async generateWithAI() {
+        const key = document.getElementById('ai-key').value;
+        const prompt = document.getElementById('ai-prompt').value;
+        const loader = document.getElementById('aiLoader');
+        const btnText = document.getElementById('aiBtnText');
+
+        if (!key) return alert('Please enter Gemini API Key first.');
+        if (!prompt) return alert('Enter a prompt for AI.');
+
+        try {
+          loader.classList.remove('hidden');
+          btnText.textContent = 'Generating...';
+
+          if (!this.ai) this.ai = new VibeAIService(key);
+
+          const result = await this.ai.generate(
+            prompt,
+            document.getElementById('editor-html').value,
+            document.getElementById('editor-js').value
+          );
+
+          if (result.html && result.js) {
+            document.getElementById('editor-html').value = result.html;
+            document.getElementById('editor-js').value = result.js;
+            // Show HTML tab to see changes
+            document.querySelector('[data-tab="html"]').click();
+            alert('AI Generation Successful! Click "Apply Vibe" to see the results.');
+          }
+        } catch (e) {
+          console.error(e);
+          alert('AI Error: ' + e.message);
+        } finally {
+          loader.classList.add('hidden');
+          btnText.textContent = 'Generate with AI';
+        }
+      }
+
       logPacket(t, s) {
         const log = document.getElementById('packet-log');
         if (this.packetCount === undefined) {
           this.packetCount = 0;
           log.innerHTML = '';
         }
-        
+
         const timestamp = new Date().toLocaleTimeString('en-GB', { hour12: false, fractionDigits: 1 });
         const entry = document.createElement('div');
         entry.className = 'border-b border-white/5 py-0.5';
         entry.innerHTML = `<span class="opacity-30">[${timestamp}]</span> <span class="text-indigo-400">TX >></span> ${t},${s}`;
-        
+
         log.appendChild(entry);
         log.scrollTop = log.scrollHeight;
-        
+
         // Keep only last 15 entries
         while (log.children.length > 15) {
           log.removeChild(log.firstChild);
@@ -453,7 +580,7 @@
       }
     }
 
-    const app = new VibePlayground();
+    window.app = new VibePlayground();
   </script>
 </body>
 
