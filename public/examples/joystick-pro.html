@@ -282,7 +282,7 @@
   </aside>
 
   <div class="fixed top-4 left-4 text-[10px] font-mono opacity-20 pointer-events-none z-50">
-    VER: 1.2.4
+    VER: 1.2.5
   </div>
 
   <main class="glass-panel text-center">
@@ -316,6 +316,11 @@
       </div>
     </div>
 
+    <div class="bg-black/20 p-4 rounded-3xl mt-4 border border-indigo-500/10">
+      <div class="text-[9px] opacity-30 uppercase font-black">Device Feedback</div>
+      <div id="feedbackText" class="text-sm font-bold font-mono text-emerald-400 mt-1 transition-all">--</div>
+    </div>
+
     <canvas id="vizCanvas" class="mt-4"></canvas>
 
     <!-- Connect button relocated to header -->
@@ -343,6 +348,14 @@
           const server = await this.device.gatt.connect();
           const service = await server.getPrimaryService(this.SERVICE_UUID);
           this.characteristic = await service.getCharacteristic(this.CHARACTERISTIC_UUID);
+          
+          // Enable Notifications
+          await this.characteristic.startNotifications();
+          this.characteristic.addEventListener('characteristicvaluechanged', (e) => {
+            const raw = new TextDecoder().decode(e.target.value);
+            if (this.onFeedback) this.onFeedback(raw);
+          });
+
           this.isConnected = true; this.start(); onStatus('Connected: ' + this.device.name, 'connected');
         } catch (e) { onStatus('Error: ' + e.message, 'error'); }
       }
@@ -408,6 +421,16 @@
           primary: '#6366f1', deadzone: 15, expo: 1.5,
           html: '', js: '', aiKey: ''
         };
+        
+        // Handle BLE Feedback
+        this.ble.onFeedback = (val) => {
+          const el = document.getElementById('feedbackText');
+          el.textContent = val;
+          el.classList.add('text-white', 'scale-105');
+          setTimeout(() => el.classList.remove('text-white', 'scale-105'), 100);
+          this.logPacket(val, 'RX');
+        };
+
         this.blueprints = {
           joystick: {
             html: `<style>\n#joystick { width: 200px; height: 200px; background: rgba(0,0,0,0.3); border-radius: 50%; position: relative; border: 2px solid rgba(255,255,255,0.05); box-shadow: inset 0 0 20px rgba(0,0,0,0.5); touch-action: none; user-select: none; }\n#thumb { width: 60px; height: 60px; background: var(--vibe-primary); border-radius: 50%; position: absolute; top:50%; left:50%; transform: translate(-50%,-50%); box-shadow: 0 0 25px var(--vibe-primary); cursor: grab; pointer-events: none; }\n</style>\n<div id="joystick"><div id="thumb"></div></div>`,
@@ -472,7 +495,7 @@
             this.ble.setPower(t, s);
             document.getElementById('valT').textContent = t;
             document.getElementById('valS').textContent = s;
-            this.logPacket(t, s);
+            this.logPacket(`${t},${s}`, 'TX');
           },
           config: this.config
         };
@@ -519,7 +542,7 @@
         }
       }
 
-      logPacket(t, s) {
+      logPacket(data, type = 'TX') {
         const log = document.getElementById('packet-log');
         if (this.packetCount === undefined) {
           this.packetCount = 0;
@@ -529,7 +552,12 @@
         const timestamp = new Date().toLocaleTimeString('en-GB', { hour12: false, fractionDigits: 1 });
         const entry = document.createElement('div');
         entry.className = 'border-b border-white/5 py-0.5';
-        entry.innerHTML = `<span class="opacity-30">[${timestamp}]</span> <span class="text-indigo-400">TX >></span> ${t},${s}`;
+        
+        if (type === 'TX') {
+          entry.innerHTML = `<span class="opacity-30">[${timestamp}]</span> <span class="text-indigo-400">TX >></span> ${data}`;
+        } else {
+          entry.innerHTML = `<span class="opacity-30">[${timestamp}]</span> <span class="text-emerald-400">RX <<</span> ${data}`;
+        }
 
         log.appendChild(entry);
         log.scrollTop = log.scrollHeight;
